@@ -321,7 +321,7 @@ CREATE TABLE IF NOT EXISTS triggers (
     operator    TEXT NOT NULL,                 -- >|>=|<|<=|delta_pct
     threshold   TEXT NOT NULL,
     unit        TEXT NOT NULL,
-    window      TEXT NOT NULL DEFAULT 'spot',
+    "window"    TEXT NOT NULL DEFAULT 'spot',
     severity    TEXT NOT NULL DEFAULT 'ATENCAO',
     active      INTEGER NOT NULL DEFAULT 1,
     description TEXT,

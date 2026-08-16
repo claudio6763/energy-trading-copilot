@@ -58,11 +58,27 @@ def _qmark_to_pyformat(sql: str) -> str:
     return sql.replace("?", "%s")
 
 
+def _strip_line_comments(script: str) -> str:
+    """Remove `-- comentario` ate o fim da linha, ANTES do split por `;`.
+
+    Comentario de schema.sql pode ter `;` no meio do texto em portugues
+    ("verifica; ver DECISOES.md") — sem tirar o comentario primeiro, o split
+    ingenuo por `;` corta o comentario ao meio e a segunda metade deixa de
+    comecar com `--`, quebrando a deteccao de "isto e so comentario".
+    Seguro aqui: schema.sql e DDL, sem string literal com `--` dentro.
+    """
+    linhas = []
+    for linha in script.splitlines():
+        pos = linha.find("--")
+        linhas.append(linha[:pos] if pos != -1 else linha)
+    return "\n".join(linhas)
+
+
 def _split_statements(script: str) -> list[str]:
-    """Split ingenuo por `;` de fim de linha — schema.sql nao tem `;` dentro
-    de string literal nem em corpo de trigger no trecho que roda aqui."""
+    """Split por `;` de fim de linha, depois de remover comentarios."""
+    sem_comentarios = _strip_line_comments(script)
     out = []
-    for stmt in script.split(";"):
+    for stmt in sem_comentarios.split(";"):
         s = stmt.strip()
         if s:
             out.append(s)
@@ -82,6 +98,17 @@ class PgConnectionShim:
 
     def executescript(self, script: str) -> None:
         for stmt in _split_statements(script):
+            # remove linhas de comentario `-- ...` antes de checar o tipo do
+            # comando: o primeiro "statement" do arquivo e so comentario + PRAGMA.
+            sem_comentarios = "\n".join(
+                linha for linha in stmt.splitlines() if not linha.strip().startswith("--")
+            ).strip()
+            if not sem_comentarios:
+                continue
+            if sem_comentarios.upper().startswith("PRAGMA"):
+                # `PRAGMA foreign_keys = ON` e sintaxe do SQLite; FK e sempre
+                # obrigatoria no Postgres, sem equivalente a pedir.
+                continue
             try:
                 self._conn.execute(stmt)
             except Exception as exc:  # pragma: no cover - diagnostico no boot
@@ -100,15 +127,28 @@ class PgConnectionShim:
         return PgCursorShim(self._conn.cursor())
 
 
+def _normalize_dsn(database_url: str) -> str:
+    """psycopg fala libpq puro: `postgresql://...`. Aceita e normaliza a
+    notacao de dialeto do SQLAlchemy (`postgresql+psycopg://...`,
+    `postgres+psycopg2://...`) removendo o `+driver` — psycopg nao entende
+    esse sufixo e erraria a conexao se ele passasse adiante sem tratamento.
+    Essa normalizacao mora aqui (codigo), nunca exigida do valor em `.env`.
+    """
+    import re
+
+    return re.sub(r"^(postgres(?:ql)?)\+\w+://", r"\1://", database_url)
+
+
 def connect_postgres(database_url: str) -> PgConnectionShim:
     import psycopg
     from psycopg.rows import dict_row
 
+    dsn = _normalize_dsn(database_url)
     # autocommit=True para casar com o isolation_level=None do sqlite3 usado
     # em connection.py: cada .execute() fora de um BEGIN explicito ja vale.
     # `session()` continua funcionando porque BEGIN/COMMIT/ROLLBACK explicitos
     # abrem/fecham bloco de transacao normalmente em cima de autocommit.
-    conn = psycopg.connect(database_url, row_factory=dict_row, autocommit=True)
+    conn = psycopg.connect(dsn, row_factory=dict_row, autocommit=True)
     return PgConnectionShim(conn)
 
 

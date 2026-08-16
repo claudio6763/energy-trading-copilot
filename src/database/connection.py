@@ -21,6 +21,7 @@ A URL nunca fica no repositorio: `st.secrets["DATABASE_URL"]` em producao,
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from decimal import Decimal
@@ -40,6 +41,12 @@ AnyConnection = Union[sqlite3.Connection, PgConnectionShim]
 def get_database_url() -> str | None:
     """`DATABASE_URL` de `st.secrets` (se rodando sob Streamlit) ou do ambiente.
 
+    `COPILOT_DB` e aceito como alias quando contem uma URL de Postgres — o
+    nome historico da variavel era so o caminho do arquivo SQLite, mas
+    `.env`/`.env.example` deste projeto ja usam `COPILOT_DB` tambem para
+    apontar o Postgres, e a troca de nome e o tipo de coisa que se resolve no
+    codigo, nao mandando reescrever `.env`.
+
     Ausente -> sqlite local (comportamento de sempre). Nunca lanca excecao so
     por nao estar num contexto Streamlit — so nesse caso ela nao existe.
     """
@@ -50,11 +57,20 @@ def get_database_url() -> str | None:
             return str(st.secrets["DATABASE_URL"])
     except Exception:
         pass
-    return os.environ.get("DATABASE_URL") or None
+    valor = os.environ.get("DATABASE_URL")
+    if valor:
+        return valor
+    alias = os.environ.get("COPILOT_DB")
+    if alias and _is_postgres_url(alias):
+        return alias
+    return None
 
 
 def _is_postgres_url(url: str) -> bool:
-    return url.startswith("postgres://") or url.startswith("postgresql://")
+    """`postgres://`, `postgresql://` ou qualquer variante `postgresql+driver://`
+    (notacao de dialeto do SQLAlchemy — aceita na entrada, normalizada em
+    `pg_shim.connect_postgres` antes de chegar no psycopg puro)."""
+    return bool(re.match(r"^postgres(ql)?(\+\w+)?://", url))
 
 
 def db_path() -> Path:

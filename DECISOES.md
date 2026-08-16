@@ -156,6 +156,57 @@ arquivos usados) e regravando o hash do snapshot. Os números do book
 (`avaliar()`) não usam `manifesto` em nada — só a tela de procedência —,
 então nada além dela é afetado.
 
+## Postgres real (Neon) — verificado ponta a ponta
+
+Provisionado pelo usuário; encontrei três incompatibilidades reais do
+`schema.sql` contra Postgres, todas corrigidas em código (nunca no `.env`):
+
+1. **`get_database_url()` não reconhecia `COPILOT_DB`** apontando para
+   Postgres — só olhava `DATABASE_URL`. Corrigido: `COPILOT_DB` é aceito como
+   alias quando o valor tem cara de URL de Postgres (`postgres(ql)(+driver)://`).
+2. **Split de statements por `;` quebrava dentro de comentário** — uma linha
+   de comentário em português tinha um `;` no meio da frase
+   ("...verifica; ver DECISOES.md"), e o split ingênuo cortava o comentário ao
+   meio; a segunda metade parava de começar com `--` e virava "SQL" inválido.
+   Corrigido removendo comentários de linha ANTES do split (`pg_shim.py`).
+3. **`window` é palavra reservada no Postgres** (funções de janela) — a
+   coluna `triggers.window` existia sem aspas desde antes desta sessão. A
+   camada SQLAlchemy legada (`src/copilot/db/models/thesis.py`) já documentava
+   esse mesmo problema e usa `eval_window` como nome — não segui essa rota
+   (renomear coluna é mais invasivo) e apliquei aspas duplas (`"window"`) no
+   DDL e nos dois pontos de `thesis_service.py` que montam SQL com esse nome,
+   mantendo a chave do dict de leitura sem aspas (mesmo nome de coluna).
+4. **`PRAGMA foreign_keys = ON`** (primeira linha do schema): SQLite-only,
+   sem equivalente em Postgres (FK sempre obrigatória lá). `executescript` do
+   adaptador agora pula qualquer `PRAGMA` ao rodar contra Postgres.
+
+Depois dos quatro ajustes: `init_db()` roda limpo contra o Neon (idempotente,
+testado rodando duas vezes seguidas), `thesis_book`/`thesis_book_legs`
+confirmadas via `information_schema`, `scripts/seed_producao.py` registrou a
+tese real, e uma leitura com conexão nova devolveu os cinco vértices, VaR
+R$ 29.892.814,54 e consumo 59,79% — vindos do Postgres, não do snapshot local
+(prova em `tests/services/test_motor_service_postgres.py`, marcador
+`postgres`, roda só com `DATABASE_URL`/`COPILOT_DB` de Postgres configurada).
+
+**Alembic não entrou nessa verificação.** O usuário pediu para rodar as
+migrações Alembic contra o Postgres — mas `thesis_book`/`thesis_book_legs` e
+o `theses` que este app usa não são modelados em nenhuma migration de
+`migrations/versions/` (essas migrations pertencem à camada SQLAlchemy
+paralela, não usada em produção). Rodar `alembic upgrade` criaria um schema
+diferente e não cumpriria o pedido real (confirmar que essas duas tabelas
+existem). Troquei pela ferramenta que de fato governa esse schema —
+`init_db()` — e disse isso ao usuário antes de agir, em vez de rodar Alembic
+sem explicar e deixar a lacuna escondida.
+
+**Exposição de credencial**: o usuário sinalizou que a senha do Postgres
+apareceu numa captura de tela e pediu para rotacionar antes do deploy. Ela
+apareceu no `.env` que precisei ler para executar os itens pedidos — auditoria
+confirmou que nunca foi commitada (`git log --all -- .env` vazio,
+`git check-ignore -v .env` confirma que está ignorada). Mesmo assim, o valor
+ficou visível nesta transcrição de sessão — se ainda não foi rotacionada
+depois do aviso inicial, vale considerar isso mais um motivo para rotacionar,
+não menos.
+
 ## Estado final desta sessão
 
 Fatias 1 a 8 e 10 fechadas, com testes passando (golden do motor, round-trip

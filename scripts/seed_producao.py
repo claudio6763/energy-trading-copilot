@@ -25,6 +25,10 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from decimal import Decimal  # noqa: E402
 
+from src.config import load_dotenv  # noqa: E402
+
+load_dotenv()  # popula DATABASE_URL/COPILOT_DB do .env antes de qualquer leitura de config
+
 from src.agents.llm_client import get_client  # noqa: E402
 from src.database.connection import connect, dialect_of, get_database_url, init_db  # noqa: E402
 from src.services import desafio_service as DES  # noqa: E402

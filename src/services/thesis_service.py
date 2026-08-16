@@ -234,7 +234,7 @@ def add_trigger(
     tid = R.new_id()
     conn.execute(
         "INSERT INTO triggers (id, thesis_id, rule_type, metric, operator, threshold, unit, "
-        "window, severity, active, description, created_at) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)",
+        '"window", severity, active, description, created_at) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)',
         (tid, thesis_id, rule_type, metric, operator, R.as_text(threshold), unit, window,
          severity, description, R.now_iso()),
     )
@@ -281,6 +281,13 @@ def new_version(conn: sqlite3.Connection, thesis_id: str, *, change_reason: str,
         "owner, as_of, 'RASCUNHO', ?, ?, ? FROM theses WHERE id = ?",
         (novo, change_reason, agora, agora, thesis_id),
     )
+    # "window" e palavra reservada no Postgres (funcoes de janela) — precisa
+    # de aspas duplas no SQL, mas a CHAVE do dict de retorno da linha continua
+    # sem aspas (mesmo nome de coluna). `campos` (para indexar `linha[c]`) e
+    # `colunas_sql` (para o texto SQL) sao mantidos separados de proposito.
+    def _aspas_se_reservada(col: str) -> str:
+        return f'"{col}"' if col == "window" else col
+
     for tabela, colunas in (
         ("thesis_assumptions",
          "kind, statement, metric, expected, tol_low, tol_high, unit, criticality, status, evidence_id"),
@@ -289,14 +296,15 @@ def new_version(conn: sqlite3.Connection, thesis_id: str, *, change_reason: str,
         ("triggers",
          "rule_type, metric, operator, threshold, unit, window, severity, active, description"),
     ):
+        campos = colunas.replace(" ", "").split(",")
+        colunas_sql = ", ".join(_aspas_se_reservada(c) for c in campos)
         linhas = conn.execute(
-            f"SELECT {colunas} FROM {tabela} WHERE thesis_id = ?", (thesis_id,)
+            f"SELECT {colunas_sql} FROM {tabela} WHERE thesis_id = ?", (thesis_id,)
         ).fetchall()
         for linha in linhas:
-            campos = colunas.replace(" ", "").split(",")
             marcadores = ",".join("?" * (len(campos) + 3))
             conn.execute(
-                f"INSERT INTO {tabela} (id, thesis_id, {colunas}, created_at) VALUES ({marcadores})",
+                f"INSERT INTO {tabela} (id, thesis_id, {colunas_sql}, created_at) VALUES ({marcadores})",
                 (R.new_id(), novo, *[linha[c] for c in campos], agora),
             )
     R.audit(conn, action="VERSION", entity="tese", entity_id=novo, actor=actor,
