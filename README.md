@@ -41,7 +41,31 @@ pytest -q
 streamlit run app.py
 ```
 
-A interface abre em <http://localhost:8501>.
+A interface abre em <http://localhost:8501>. A área **Mesa** é o padrão — se
+não houver tese registrada, vá em **Registrar tese** primeiro.
+
+### Motor de curva (Entrega 2 dentro da Entrega 1)
+
+O book proposto pela tela **Registrar tese** vem do `motor_curva/` vendorizado
+(cópia fiel de `projeto_curva_v4`, nunca edite à mão) recombinado com um
+snapshot congelado em `motor_curva/snapshots/` — commitado no repositório,
+gerado offline:
+
+```bash
+pip install -r requirements-motor-offline.txt   # só para gerar snapshot; nunca no deploy
+python scripts/vendor_motor.py --source <caminho para projeto_curva_v4>
+python scripts/build_motor_snapshot.py --submercado SE
+python scripts/seed_producao.py                  # registra a tese na DATABASE_URL ativa
+```
+
+Deploy publicado usa só `requirements-app.txt` (sem `pdfplumber`/`matplotlib`)
+e `DATABASE_URL` (Postgres) em `st.secrets` — checklist completo em
+`DECISOES.md`.
+
+### Acesso
+
+App público, sem credencial (link direto). Dorme por inatividade no plano
+gratuito do Streamlit Cloud — abra a URL uns 10 minutos antes de usar.
 
 ### Watchdog (vigilância sem a interface aberta)
 

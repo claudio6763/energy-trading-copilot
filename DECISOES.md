@@ -156,4 +156,23 @@ arquivos usados) e regravando o hash do snapshot. Os números do book
 (`avaliar()`) não usam `manifesto` em nada — só a tela de procedência —,
 então nada além dela é afetado.
 
+## Estado final desta sessão
+
+Fatias 1 a 8 e 10 fechadas, com testes passando (golden do motor, round-trip
+de persistência, smoke tests de UI via `AppTest` real do Streamlit — não
+mock). Camada opcional: nenhuma, por instrução explícita. Ordem seguida foi a
+reprioritizada: motor → schema → (esqueleto de deploy preparado, não
+publicado) → Registrar → salvar → ao vivo → Desafiar → Tese → Vigiar/Mesa →
+Dados e procedência.
+
+**O que só o usuário pode terminar** (exige OAuth/conta em navegador, listado
+acima em "Deploy"): criar o repositório GitHub e dar push, provisionar
+Supabase/Neon, conectar o Streamlit Cloud, colar os secrets, rodar
+`scripts/seed_producao.py` contra a `DATABASE_URL` de produção, e o teste de
+aceitação final (registrar, fechar a aba, reabrir a URL publicada).
+
+Nenhuma das três exceções que exigiam parar e perguntar (mudar arquivo do
+motor, segundo cálculo de risco concorrente, algo combinado impossível)
+ocorreu — segui até aqui sem interromper, como pedido.
+
 *(Continua conforme as fatias seguintes forem fechadas.)*
