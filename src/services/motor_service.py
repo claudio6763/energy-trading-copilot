@@ -86,6 +86,11 @@ def register_thesis_from_motor(
     preco_entrada_origem: str = "leitura de mesa",
     actor: str = "trader",
     avaliado: dict[str, Any] | None = None,
+    trader_response: str | None = None,
+    desafio_premissa_fragil: str | None = None,
+    desafio_cenario_quebra: str | None = None,
+    desafio_contra_argumento: str | None = None,
+    desafio_vies_confirmacao: str | None = None,
 ) -> dict[str, str]:
     """Registra a tese com o book proposto pelo motor. Devolve `{thesis_id, book_id, evidence_id}`.
 
@@ -93,6 +98,12 @@ def register_thesis_from_motor(
     a tela mostrou antes de "Salvar"), passe aqui para nao rodar de novo — mas
     o resultado tem de ser exatamente o de `avaliar(snapshot, ref_mercado,
     limite_var)`, senao o que fica salvo diverge do que a tela mostrou.
+
+    `preco_entrada_origem` e o default para vertices sem baseline no snapshot.
+    Vertice cujo valor de `ref_mercado` DIVERGE do que o snapshot tinha na
+    geracao (`notas['ref_mercado_geracao']`) e automaticamente rotulado
+    "informado na defesa" — e assim que o registro ao vivo marca exatamente o
+    dado que mudou (Parte 3 / Vigiar).
     """
     resultado = avaliado if avaliado is not None else avaliar(snapshot, ref_mercado, limite_var)
     book = resultado["book"]
@@ -109,6 +120,16 @@ def register_thesis_from_motor(
         review_date=review_date, exit_condition=exit_condition, invalidation=invalidation,
         actor=actor,
     )
+
+    if any((trader_response, desafio_premissa_fragil, desafio_cenario_quebra,
+            desafio_contra_argumento, desafio_vies_confirmacao)):
+        conn.execute(
+            "UPDATE theses SET trader_response=?, desafio_premissa_fragil=?, "
+            "desafio_cenario_quebra=?, desafio_contra_argumento=?, "
+            "desafio_vies_confirmacao=? WHERE id=?",
+            (trader_response, desafio_premissa_fragil, desafio_cenario_quebra,
+             desafio_contra_argumento, desafio_vies_confirmacao, tid),
+        )
 
     excerto = (
         f"Motor de curva (snapshot {snapshot.compute_hash()[:12]}): book de "
@@ -146,8 +167,15 @@ def register_thesis_from_motor(
         ),
     )
 
+    baseline = snapshot.notas.get("ref_mercado_geracao") or {}
     for linha in ladder:
         mes_ref = _label_para_mes_ref(linha["mes"])
+        valor_usado = ref_mercado.get(mes_ref) or ref_mercado.get(mes_ref[:7])
+        valor_base = baseline.get(mes_ref)
+        if valor_base is not None and valor_usado is not None and abs(float(valor_usado) - float(valor_base)) > 1e-9:
+            origem = "informado na defesa"
+        else:
+            origem = preco_entrada_origem
         lid = R.new_id()
         conn.execute(
             "INSERT INTO thesis_book_legs (id, book_id, mes_ref, lado, mwmed, mwmed_nature, "
@@ -160,7 +188,7 @@ def register_thesis_from_motor(
                 int(linha["horas"]), LEG_FIELD_NATURES["horas"],
                 _num(linha["mwh"]), LEG_FIELD_NATURES["mwh"],
                 _num(linha["preco_entrada"]), LEG_FIELD_NATURES["preco_entrada"],
-                preco_entrada_origem, snapshot.compute_hash(), R.now_iso(),
+                origem, snapshot.compute_hash(), R.now_iso(),
             ),
         )
 

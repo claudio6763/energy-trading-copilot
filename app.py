@@ -21,11 +21,18 @@ from src.agents.llm_client import get_client  # noqa: E402
 from src.config import get_settings  # noqa: E402
 from src.database import repositories as R  # noqa: E402
 from src.database.connection import connect, init_db  # noqa: E402
+from src.motor.avaliar import avaliar  # noqa: E402
 from src.rag import store as RAG  # noqa: E402
 from src.services import debate_service as DS  # noqa: E402
+from src.services import desafio_service as DES  # noqa: E402
+from src.services import formatting as FMT  # noqa: E402
+from src.services import motor_service as MS  # noqa: E402
 from src.services import risk_service as RS  # noqa: E402
+from src.services import snapshot_loader as SNAP  # noqa: E402
 from src.services import thesis_service as TS  # noqa: E402
 from src.services import watchdog_service as WD  # noqa: E402
+
+LIMITE_VAR_BRL = Decimal("50000000.00")  # P8 / CLAUDE.md — o limite do case
 
 st.set_page_config(page_title="Energy Trading Copilot", page_icon="⚡", layout="wide")
 
@@ -69,10 +76,279 @@ try:
             f"🟢 MODO IA REAL\n\nModelo: **{settings.anthropic_model}**\n\n"
             f"Verificado: {_dt.now().strftime('%d/%m/%Y %H:%M:%S')}"
         )
-    area = st.sidebar.radio("Área", ["Dashboard", "Teses", "Debate", "Monitor", "Dados e fontes"])
+    area = st.sidebar.radio(
+        "Área",
+        ["Registrar tese", "Dashboard", "Teses", "Debate", "Monitor", "Dados e fontes"],
+    )
+
+    # ========================================================= REGISTRAR TESE
+    if area == "Registrar tese":
+        st.title("Registrar tese")
+        st.caption(
+            "O trader escolhe a referência de mercado; o motor devolve o book "
+            "proposto. Nenhum número nesta tela é digitado sem procedência."
+        )
+
+        snapshot = SNAP.load_default_snapshot()
+        if snapshot is None:
+            st.error(
+                "Nenhum snapshot do motor encontrado em `motor_curva/snapshots/`. "
+                "Rode `python scripts/build_motor_snapshot.py` (offline) e "
+                "commite o resultado antes de registrar uma tese."
+            )
+        else:
+            st.subheader("Etapa 1 — Parâmetros")
+            c1, c2 = st.columns(2)
+            c1.metric("Submercado", snapshot.submercado)
+            c2.metric("Data de corte (as_of)", snapshot.as_of)
+            st.caption(
+                f"snapshot `{snapshot.compute_hash()[:12]}` · status do motor: "
+                f"**{snapshot.status_motor}** · meia-vida sazonal: {snapshot.hl_dias} dias"
+            )
+
+            st.markdown(
+                "### 🔴 Registro ao vivo\n"
+                "Altere a referência de qualquer vértice — ou injete o dado que "
+                "derem na defesa — e clique em **Gerar book** de novo. Meta: "
+                "menos de 10 segundos entre digitar e ver o book novo."
+            )
+            st.caption(
+                "🟠 PREMISSA — leitura de mesa, sem identificação de fonte. "
+                "Vértice alterado em relação ao valor original do snapshot é "
+                "gravado como **\"informado na defesa\"** na hora de salvar."
+            )
+            default_ref = snapshot.notas.get("ref_mercado_geracao") or {}
+            cols = st.columns(len(snapshot.alvo))
+            ref_mercado: dict[str, float] = {}
+            for col, mes in zip(cols, snapshot.alvo):
+                rotulo = f"{mes[5:7]}/{mes[2:4]}"
+                default_val = float(default_ref.get(mes, 0.0))
+                ref_mercado[mes] = col.number_input(
+                    rotulo, value=default_val, step=1.0, format="%.2f",
+                    key=f"ref_mkt_{mes}",
+                )
+                if abs(ref_mercado[mes] - default_val) > 1e-9:
+                    col.caption("🟠 informado na defesa")
+
+            if st.button("Gerar book", type="primary"):
+                import time as _time
+
+                inicio = _time.perf_counter()
+                try:
+                    resultado = avaliar(snapshot, ref_mercado, LIMITE_VAR_BRL)
+                    duracao_ms = (_time.perf_counter() - inicio) * 1000
+                    if st.session_state.get("registrar_resultado") is not None:
+                        st.session_state["registrar_resultado_anterior"] = (
+                            st.session_state["registrar_resultado"]
+                        )
+                    st.session_state["registrar_snapshot_path"] = str(
+                        SNAP.list_snapshot_paths()[-1]
+                    )
+                    st.session_state["registrar_ref_mercado"] = ref_mercado
+                    st.session_state["registrar_resultado"] = resultado
+                    st.session_state["registrar_duracao_ms"] = duracao_ms
+                    st.toast(f"Book recalculado em {duracao_ms:.0f} ms", icon="⚡")
+                except ValueError as exc:
+                    st.error(f"Falha explícita do motor: {exc}")
+
+            resultado = st.session_state.get("registrar_resultado")
+            anterior = st.session_state.get("registrar_resultado_anterior")
+            duracao_ms = st.session_state.get("registrar_duracao_ms")
+            if resultado and anterior:
+                st.markdown("#### Diff — book novo × book anterior")
+                if duracao_ms is not None:
+                    st.caption(f"recalculado em {duracao_ms:.0f} ms")
+                book_ant = anterior["book"]
+                ladder_ant = {l["mes"]: l for l in book_ant["ladder"]}
+                linhas_diff = []
+                for linha in resultado["book"]["ladder"]:
+                    ant = ladder_ant.get(linha["mes"])
+                    delta_preco = linha["preco_entrada"] - ant["preco_entrada"] if ant else None
+                    delta_mwm = linha["mwmed"] - ant["mwmed"] if ant else None
+                    linhas_diff.append({
+                        "vértice": linha["mes"],
+                        "preço antes": FMT.fmt_rs_mwh(ant["preco_entrada"]) if ant else "—",
+                        "preço agora": FMT.fmt_rs_mwh(linha["preco_entrada"]),
+                        "Δ preço": (f"{'+' if delta_preco >= 0 else ''}{FMT.fmt_num(delta_preco)}"
+                                    if delta_preco is not None else "—"),
+                        "MWm antes": FMT.fmt_mwm(ant["mwmed"]) if ant else "—",
+                        "MWm agora": FMT.fmt_mwm(linha["mwmed"]),
+                        "Δ MWm": (f"{'+' if delta_mwm >= 0 else ''}{FMT.fmt_num(delta_mwm, 0)}"
+                                  if delta_mwm is not None else "—"),
+                    })
+                st.dataframe(linhas_diff, use_container_width=True, hide_index=True)
+                dvar = resultado["book"]["var_total"] - book_ant["var_total"]
+                dcons = resultado["book"]["consumo_limite"] - book_ant["consumo_limite"]
+                dc1, dc2 = st.columns(2)
+                dc1.metric("VaR total", FMT.fmt_money_mi(resultado["book"]["var_total"]),
+                           delta=FMT.fmt_money_mi(dvar))
+                dc2.metric("Consumo do limite", FMT.fmt_pct(resultado["book"]["consumo_limite"]),
+                           delta=FMT.fmt_pct(dcons))
+
+            if resultado:
+                book = resultado["book"]
+                st.subheader("Book proposto")
+                st.dataframe(
+                    [
+                        {
+                            "vértice": linha["mes"],
+                            "lado": "VENDIDO",
+                            "MWm": FMT.fmt_mwm(linha["mwmed"]),
+                            "horas": int(linha["horas"]),
+                            "MWh": FMT.fmt_mwh(linha["mwh"]),
+                            "preço entrada": FMT.fmt_rs_mwh(linha["preco_entrada"]),
+                            "natureza (preço)": FMT.nature_badge("PREMISSA"),
+                        }
+                        for linha in book["ladder"]
+                    ],
+                    use_container_width=True, hide_index=True,
+                )
+
+                k1, k2, k3, k4 = st.columns(4)
+                k1.metric(f"Energia {FMT.nature_badge('CALCULADO')}",
+                          FMT.fmt_gwh(book["energia_liquida_gwh"] * 1000))
+                k2.metric(f"Notional {FMT.nature_badge('CALCULADO')}",
+                          FMT.fmt_money_mi(book["notional_brl"]))
+                k3.metric(f"Preço médio {FMT.nature_badge('CALCULADO')}",
+                          FMT.fmt_rs_mwh(book["preco_entrada_medio_mwh"]))
+                k4.metric("MWm eq. (ago–dez/26)", FMT.fmt_mwm(book["mwmed_equivalente_flat"]),
+                          help="Comparação com produto flat — nunca o tamanho. Veja o ladder acima.")
+
+                st.markdown("**Risco — VaR (a única definição; nunca soma com stress de cenário)**")
+                consumo = book["consumo_limite"]
+                st.progress(min(consumo, 1.0),
+                            text=f"VaR {FMT.fmt_money(book['var_total'])} de "
+                                 f"{FMT.fmt_money(LIMITE_VAR_BRL)} — {FMT.fmt_pct(consumo)} do limite "
+                                 f"(folga {FMT.fmt_money(float(LIMITE_VAR_BRL) - book['var_total'])})")
+                if consumo >= 1.0:
+                    st.error("VaR acima do limite — aprovação bloqueada por código (P8).")
+                elif consumo >= 0.80:
+                    st.warning("Consumo do limite acima da faixa de atenção (80%).")
+
+                st.markdown("**Resultado esperado — nunca número único**")
+                sc1, sc2, sc3, sc4 = st.columns(4)
+                sc1.metric("Seco", FMT.fmt_money_mi(book["pnl_Entrega_Seco"]))
+                sc2.metric("Esperado", FMT.fmt_money_mi(book["pnl_Entrega_Esperado"]))
+                sc3.metric("Úmido", FMT.fmt_money_mi(book["pnl_Entrega_Umido"]))
+                sc4.metric("Convergência do prêmio", FMT.fmt_money_mi(book["pnl_Convergencia"]))
+
+                st.caption(
+                    f"prêmio de nível: {FMT.fmt_rs_mwh(resultado.get('premio_nivel_rs_mwh'))} "
+                    f"{FMT.nature_badge('CALCULADO')} · modo de sinal: {resultado['modo_sinal']} · "
+                    f"VPL: {FMT.fmt_money_mi(book['vpl'])}"
+                )
+                st.divider()
+                st.subheader("Etapa 2 — Narrativa")
+                st.caption(
+                    "Campos que você digita ficam visualmente distintos dos calculados pelo motor."
+                )
+                titulo = st.text_input(
+                    f"Título* {FMT.TRADER_BADGE}", "Book Entrega 2 — SE/CO",
+                    key="registrar_titulo",
+                )
+                resumo = st.text_area(
+                    f"Resumo* (até 5 linhas) {FMT.TRADER_BADGE}", height=110,
+                    key="registrar_resumo",
+                    value=(
+                        f"Venda de {book['n_pernas']} vértices de energia convencional flat "
+                        f"{snapshot.submercado}, calibrada contra a referência de mesa."
+                    ),
+                )
+                nc1, nc2, nc3 = st.columns(3)
+                responsavel = nc1.text_input(f"Responsável* {FMT.TRADER_BADGE}", "trader",
+                                              key="registrar_owner")
+                horizonte = nc2.number_input(f"Horizonte (dias) {FMT.TRADER_BADGE}", value=140,
+                                              step=1, key="registrar_horizonte")
+                reavaliacao = nc3.date_input(f"Data de reavaliação* {FMT.TRADER_BADGE}",
+                                              key="registrar_reavaliacao")
+                saida = st.text_input(
+                    f"Gatilho de saída* {FMT.TRADER_BADGE}",
+                    "Prêmio de nível abaixo de R$ 15/MWh", key="registrar_saida",
+                )
+                invalidacao = st.text_input(
+                    f"O que invalidaria a tese* {FMT.TRADER_BADGE}",
+                    "Ordenação Seco > Base > Úmido invertida na reestimação",
+                    key="registrar_invalidacao",
+                )
+
+                direcao = "VENDER"  # todas as pernas deste book sao VENDIDO
+
+                st.divider()
+                st.subheader("Etapa 3 — Desafiar")
+                st.caption("Bloqueante — não dá para pular. Roda sobre os números do motor.")
+                if st.button("Rodar Desafiar"):
+                    desafio = DES.montar_desafio(
+                        resultado, direcao=direcao, client=cliente, conn=conn,
+                        ref_mercado_atual=st.session_state.get("registrar_ref_mercado"),
+                        ref_mercado_base=snapshot.notas.get("ref_mercado_geracao"),
+                    )
+                    st.session_state["registrar_desafio"] = desafio
+
+                desafio = st.session_state.get("registrar_desafio")
+                if desafio:
+                    badge_ia = FMT.IA_BADGE if desafio["modo_ia"] == "REAL" else "🤖 ROTEIRO DEMONSTRATIVO (não é IA)"
+                    st.markdown(f"**Premissa mais frágil** {FMT.nature_badge('CALCULADO')}")
+                    st.write(desafio["premissa_fragil"])
+                    st.markdown(f"**Cenário que quebra a posição** {FMT.nature_badge('CALCULADO')}")
+                    st.write(desafio["cenario_quebra"])
+                    st.markdown(f"**Contra-argumento** {badge_ia}")
+                    st.write(desafio["contra_argumento"])
+                    st.markdown("**Viés de confirmação**")
+                    if desafio["vies_confirmacao_detectado"]:
+                        st.warning(desafio["vies_confirmacao_texto"])
+                    else:
+                        st.write(desafio["vies_confirmacao_texto"])
+                    resposta_trader = st.text_area(
+                        f"Resposta do trader* {FMT.TRADER_BADGE}",
+                        key="registrar_trader_response",
+                        help="Obrigatória antes de salvar — o case exige que o trader "
+                             "responda ao contra-argumento, não apenas concorde.",
+                    )
+                else:
+                    resposta_trader = ""
+                    st.info("Rode o Desafiar para liberar o registro.")
+
+                st.subheader("Etapa 4 — Salvar")
+                pronto = bool(
+                    titulo.strip() and resumo.strip() and responsavel.strip()
+                    and saida.strip() and invalidacao.strip()
+                    and desafio and resposta_trader.strip()
+                )
+                if not pronto:
+                    st.caption(
+                        "Preencha título, resumo, responsável, gatilho de saída, condição de "
+                        "invalidação, rode o Desafiar e responda ao contra-argumento."
+                    )
+                if st.button("Salvar tese", type="primary", disabled=not pronto):
+                    try:
+                        registro = MS.register_thesis_from_motor(
+                            conn, snapshot=snapshot,
+                            ref_mercado=st.session_state["registrar_ref_mercado"],
+                            title=titulo, summary=resumo, direction=direcao,
+                            product=f"Convencional flat mensal {snapshot.submercado}",
+                            submarket="SE/CO" if snapshot.submercado == "SE" else snapshot.submercado,
+                            owner=responsavel, as_of=snapshot.as_of, horizon_days=int(horizonte),
+                            review_date=reavaliacao.isoformat(), exit_condition=saida,
+                            invalidation=invalidacao, limite_var=LIMITE_VAR_BRL,
+                            preco_entrada_origem="leitura de mesa", actor=responsavel,
+                            avaliado=resultado, trader_response=resposta_trader,
+                            desafio_premissa_fragil=desafio["premissa_fragil"],
+                            desafio_cenario_quebra=desafio["cenario_quebra"],
+                            desafio_contra_argumento=desafio["contra_argumento"],
+                            desafio_vies_confirmacao=desafio["vies_confirmacao_texto"],
+                        )
+                        st.success(
+                            f"Tese registrada: `{registro['thesis_id']}` — veja em **Teses**."
+                        )
+                        for chave in ("registrar_resultado", "registrar_resultado_anterior",
+                                      "registrar_ref_mercado", "registrar_snapshot_path",
+                                      "registrar_desafio"):
+                            st.session_state.pop(chave, None)
+                    except Exception as exc:
+                        st.error(f"Não foi possível registrar: {exc}")
 
     # ============================================================== DASHBOARD
-    if area == "Dashboard":
+    elif area == "Dashboard":
         st.title("Dashboard")
         teses = TS.list_theses(conn)
         alertas = WD.open_alerts(conn)

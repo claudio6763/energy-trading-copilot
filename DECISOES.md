@@ -100,4 +100,45 @@ com a razão em uma linha. Ordem cronológica.
   delas é nova em relação ao que `pyproject.toml`/`requirements.txt` já
   declaravam — só não estavam instaladas no ambiente de desenvolvimento.
 
+## Deploy — o que eu não posso fazer sozinho
+
+Git foi inicializado localmente e o primeiro commit está feito (250 arquivos,
+identidade local `Energy Trading Copilot <copilot@local>` — troque para a sua
+com `git config user.name`/`user.email` se quiser seu nome nos commits).
+
+O resto do deploy exige login/OAuth no navegador em contas que só você pode
+criar — não consigo fazer por você. Checklist, nessa ordem:
+
+1. **Criar repositório privado no GitHub** (CLAUDE.md exige privado) e:
+   ```
+   git remote add origin <url-do-seu-repo>
+   git push -u origin main
+   ```
+2. **Provisionar Postgres gerenciado** — Supabase ou Neon, plano gratuito
+   (confirme os limites atuais antes de escolher, mudam com frequência).
+   Copie a `DATABASE_URL` (formato `postgresql://usuario:senha@host:porta/banco`).
+3. **Streamlit Community Cloud → New app**, apontando para o seu repositório,
+   branch `main`, arquivo principal `app.py`. Em **Advanced settings → Python
+   dependencies file**, aponte para `requirements-app.txt` (não o
+   `requirements.txt` da raiz, que é do MVP anterior; e nunca
+   `requirements-motor-offline.txt`, que traria `pdfplumber`/`matplotlib` sem
+   necessidade).
+4. Em **Advanced settings → Secrets**, cole:
+   ```toml
+   DATABASE_URL = "postgresql://...."
+   ANTHROPIC_API_KEY = "..."   # opcional; sem ela o app roda em modo demonstracao
+   ```
+5. Deploy. Na primeira carga, `_garantir_schema()` roda `init_db()` sozinho
+   (DDL idempotente, sem shell) — schema.sql inteiro funciona em Postgres
+   exceto FTS5/triggers (puladas automaticamente, ver acima).
+6. **Rodar o seed de produção** (fatia final, Parte 5) contra essa mesma
+   `DATABASE_URL` antes da defesa — sem isso o link abre vazio.
+7. Testar a persistência de verdade: registrar a tese, **fechar a aba,
+   reabrir a URL** (não basta dar refresh no mesmo processo — o objetivo é
+   provar que sobrevive a um redeploy/sleep do container).
+
+O app publicado dorme por inatividade no plano gratuito do Streamlit Cloud e
+demora a acordar — abra a URL uns 10 minutos antes da defesa (repetido no
+`DECISOES.md` para não perder na correria).
+
 *(Continua conforme as fatias seguintes forem fechadas.)*
