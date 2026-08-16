@@ -80,8 +80,8 @@ try:
         )
     area = st.sidebar.radio(
         "Área",
-        ["Mesa", "Registrar tese", "Tese", "Dashboard", "Teses", "Debate", "Monitor",
-         "Dados e fontes"],
+        ["Mesa", "Registrar tese", "Tese", "Dados e procedência", "Dashboard", "Teses",
+         "Debate", "Monitor", "Dados e fontes"],
     )
 
     def _teses_com_book() -> list[dict]:
@@ -91,8 +91,45 @@ try:
         ).fetchall()
         return [dict(r) for r in linhas]
 
+    # ================================================== DADOS E PROCEDÊNCIA
+    if area == "Dados e procedência":
+        st.title("Dados e procedência")
+        st.caption(
+            "Resposta visível à pergunta do case sobre como a ferramenta não "
+            "inventa número: em vez de afirmar no texto, esta tela mostra a fonte."
+        )
+        snap_proc = SNAP.load_default_snapshot()
+        if snap_proc is None:
+            st.info("Nenhum snapshot do motor encontrado.")
+        else:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Status do motor", snap_proc.status_motor)
+            c2.metric("Data de corte", snap_proc.as_of)
+            c3.metric("Gerado em", snap_proc.gerado_em[:19].replace("T", " "))
+            st.caption(f"hash do snapshot: `{snap_proc.compute_hash()}`")
+
+            st.subheader("Manifesto de fontes")
+            st.dataframe(
+                [
+                    {
+                        "instituição": item.get("instituicao"),
+                        "conjunto": item.get("conjunto"),
+                        "sha256": (item.get("sha256") or "")[:16] + "…",
+                        "bytes": item.get("bytes"),
+                        "coletado em (UTC)": item.get("baixado_em_utc"),
+                        "limitações": item.get("qualidade_limitacoes"),
+                    }
+                    for item in snap_proc.manifesto
+                ],
+                use_container_width=True, hide_index=True,
+            )
+            st.caption(
+                "Tabela simples — sem recálculo de hash aqui (verificação ao vivo "
+                "fica para uma fatia futura, se sobrar tempo)."
+            )
+
     # ================================================================== MESA
-    if area == "Mesa":
+    elif area == "Mesa":
         st.title("Mesa")
         teses_motor = _teses_com_book()
 

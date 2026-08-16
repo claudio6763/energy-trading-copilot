@@ -141,4 +141,19 @@ O app publicado dorme por inatividade no plano gratuito do Streamlit Cloud e
 demora a acordar — abra a URL uns 10 minutos antes da defesa (repetido no
 `DECISOES.md` para não perder na correria).
 
+## Manifesto do snapshot corrigido
+
+O primeiro snapshot gerado veio com `manifesto` marcado `FIXTURE`/"dado
+sintético" — não porque o dado fosse sintético (é real, CCEE/ONS, importado
+por `motor_curva_source/importar.py`), mas porque `motor_curva.manifesto.itens()`
+só é populado pelo mecanismo de `sync` (que registra URL/hash na hora do
+download), e eu copiei os arquivos direto em vez de rodar o sync. Isso teria
+feito a tela "Dados e procedência" afirmar o oposto da verdade — exatamente o
+tipo de erro que essa tela existe para impedir. Corrigido substituindo o campo
+`manifesto` do snapshot pelo conteúdo real de
+`motor_curva_source/data_manifest.json` (mesmas chaves, hashes batendo com os
+arquivos usados) e regravando o hash do snapshot. Os números do book
+(`avaliar()`) não usam `manifesto` em nada — só a tela de procedência —,
+então nada além dela é afetado.
+
 *(Continua conforme as fatias seguintes forem fechadas.)*
