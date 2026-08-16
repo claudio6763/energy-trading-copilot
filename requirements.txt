@@ -11,3 +11,4 @@ pypdf>=4.0               # validacao de PDF (contagem de paginas)
 anthropic>=0.30          # modo IA real (opcional: sem chave, roda em DEMO)
 pymupdf>=1.24            # leitura de PDF do acervo (fallback: pypdf)
 pytest>=8.2              # testes
+psycopg[binary]
