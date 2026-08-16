@@ -1,0 +1,138 @@
+{
+  "gerado_em": "2026-08-16T20:08:46+00:00",
+  "fonte": "C:\\Users\\claud\\OneDrive\\Área de Trabalho\\projeto_curva_v4",
+  "n_arquivos": 26,
+  "arquivos": [
+    {
+      "arquivo": "__init__.py",
+      "sha256_fonte": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sha256_vendorizado": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "arquivo": "ancora.py",
+      "sha256_fonte": "39375bdbdda5acb00c53daafab908d2a48094e65f535b27ac948ed2a4b1a6a2d",
+      "sha256_vendorizado": "39375bdbdda5acb00c53daafab908d2a48094e65f535b27ac948ed2a4b1a6a2d"
+    },
+    {
+      "arquivo": "apresentacao.py",
+      "sha256_fonte": "473324596663a846c974cdcadf8d6b0bf61a37a9ffde2c94b24378b0759751aa",
+      "sha256_vendorizado": "473324596663a846c974cdcadf8d6b0bf61a37a9ffde2c94b24378b0759751aa"
+    },
+    {
+      "arquivo": "boletins.py",
+      "sha256_fonte": "b7c02d0e6d1ada1e7b789856a4cff7792ecb0979d2fa595f4c77d305eaf2011c",
+      "sha256_vendorizado": "b7c02d0e6d1ada1e7b789856a4cff7792ecb0979d2fa595f4c77d305eaf2011c"
+    },
+    {
+      "arquivo": "book.py",
+      "sha256_fonte": "ddd7c98fe03169596a7b27680a6d8740f06242487e38c40a5a0020b12b3eeb44",
+      "sha256_vendorizado": "ddd7c98fe03169596a7b27680a6d8740f06242487e38c40a5a0020b12b3eeb44"
+    },
+    {
+      "arquivo": "cenarios.py",
+      "sha256_fonte": "782c3f1937ff9953cb8eb358f502e69fd32f2e5143bcb85008278409c421025f",
+      "sha256_vendorizado": "782c3f1937ff9953cb8eb358f502e69fd32f2e5143bcb85008278409c421025f"
+    },
+    {
+      "arquivo": "cli.py",
+      "sha256_fonte": "d026fabe00a6ee01f3b10535683ab6dab7c0e806956f3c192d4864a1e5ba71bc",
+      "sha256_vendorizado": "d026fabe00a6ee01f3b10535683ab6dab7c0e806956f3c192d4864a1e5ba71bc"
+    },
+    {
+      "arquivo": "config.py",
+      "sha256_fonte": "e2b9aea7e1bd6d89cea2c73c78848f79794c8a3193e61a7ea2f8bbc83893b0b4",
+      "sha256_vendorizado": "e2b9aea7e1bd6d89cea2c73c78848f79794c8a3193e61a7ea2f8bbc83893b0b4"
+    },
+    {
+      "arquivo": "curva.py",
+      "sha256_fonte": "e2ecf086689f08bf2ce6931c90ecb36b6839a47bfaaf71371b8941ae0d63ff6b",
+      "sha256_vendorizado": "e2ecf086689f08bf2ce6931c90ecb36b6839a47bfaaf71371b8941ae0d63ff6b"
+    },
+    {
+      "arquivo": "decks.py",
+      "sha256_fonte": "bcbfbb54c3678f72696f9bcf06143dfcd96ab404c6938dfe77fe996a5b7bfcc6",
+      "sha256_vendorizado": "bcbfbb54c3678f72696f9bcf06143dfcd96ab404c6938dfe77fe996a5b7bfcc6"
+    },
+    {
+      "arquivo": "entrega2.py",
+      "sha256_fonte": "17e7a1b7d749f36e69dda74d1b442bfb104d2d72b4f63ee4f9d4352e77a40c52",
+      "sha256_vendorizado": "17e7a1b7d749f36e69dda74d1b442bfb104d2d72b4f63ee4f9d4352e77a40c52"
+    },
+    {
+      "arquivo": "excel_boletins.py",
+      "sha256_fonte": "3f46dc55d2dde72137e8d7a87f8e11cf0b2d897294d4dfb15b465cfd7c948e2f",
+      "sha256_vendorizado": "3f46dc55d2dde72137e8d7a87f8e11cf0b2d897294d4dfb15b465cfd7c948e2f"
+    },
+    {
+      "arquivo": "excel_book.py",
+      "sha256_fonte": "05c552f6c121099c851eecb8378ca632ee759690c594a5390e894961700878f6",
+      "sha256_vendorizado": "05c552f6c121099c851eecb8378ca632ee759690c594a5390e894961700878f6"
+    },
+    {
+      "arquivo": "excel_modelo.py",
+      "sha256_fonte": "721822bbd866c5d52e18d15fcf4a6433b2cf30d786ad2d92b088cdb2d537bf78",
+      "sha256_vendorizado": "721822bbd866c5d52e18d15fcf4a6433b2cf30d786ad2d92b088cdb2d537bf78"
+    },
+    {
+      "arquivo": "fontes.py",
+      "sha256_fonte": "cb707ab4e50e9765a88496346b6d5aaa82c9da80498072514a7f198b545a20c8",
+      "sha256_vendorizado": "cb707ab4e50e9765a88496346b6d5aaa82c9da80498072514a7f198b545a20c8"
+    },
+    {
+      "arquivo": "ingest.py",
+      "sha256_fonte": "1323f17a097318ca36da5c6071847f7d94e2e684b0e7ec6ca0369d2c2e8197ce",
+      "sha256_vendorizado": "1323f17a097318ca36da5c6071847f7d94e2e684b0e7ec6ca0369d2c2e8197ce"
+    },
+    {
+      "arquivo": "manifesto.py",
+      "sha256_fonte": "8006aff53b63d135793d2391be77de146dd070cc2c473a85ffd87c2b4e9333a9",
+      "sha256_vendorizado": "8006aff53b63d135793d2391be77de146dd070cc2c473a85ffd87c2b4e9333a9"
+    },
+    {
+      "arquivo": "parse_infopld.py",
+      "sha256_fonte": "0a7d7b313ae48a655d09b716b655610e1c702c6fa777e140d65d77eb09ffc312",
+      "sha256_vendorizado": "0a7d7b313ae48a655d09b716b655610e1c702c6fa777e140d65d77eb09ffc312"
+    },
+    {
+      "arquivo": "parse_ipdo.py",
+      "sha256_fonte": "a95e23b875ab6a150a10eccf17bcd2cf4d2bf1bc1d9480eb41b9b379074f4244",
+      "sha256_vendorizado": "a95e23b875ab6a150a10eccf17bcd2cf4d2bf1bc1d9480eb41b9b379074f4244"
+    },
+    {
+      "arquivo": "posicao.py",
+      "sha256_fonte": "e9d4f7175e15b89dce705bb9ff724f0d0571d614ef4fa8de2d907b617dfe91af",
+      "sha256_vendorizado": "e9d4f7175e15b89dce705bb9ff724f0d0571d614ef4fa8de2d907b617dfe91af"
+    },
+    {
+      "arquivo": "premio.py",
+      "sha256_fonte": "1c4a5034e47de2f14f5d5577b34e84bde8701b78008bcd24c70b0db6c64bbe31",
+      "sha256_vendorizado": "1c4a5034e47de2f14f5d5577b34e84bde8701b78008bcd24c70b0db6c64bbe31"
+    },
+    {
+      "arquivo": "qualidade.py",
+      "sha256_fonte": "4f37e34171e24ad6bc7c89cadf37ea19918e7655999847a0edc3931d1d9c356d",
+      "sha256_vendorizado": "4f37e34171e24ad6bc7c89cadf37ea19918e7655999847a0edc3931d1d9c356d"
+    },
+    {
+      "arquivo": "relatorio.py",
+      "sha256_fonte": "a1158c9f48f29c687ab17dfb0db6f9e89855ab173d3e89ca5b91eefa9486bbc9",
+      "sha256_vendorizado": "a1158c9f48f29c687ab17dfb0db6f9e89855ab173d3e89ca5b91eefa9486bbc9"
+    },
+    {
+      "arquivo": "risco.py",
+      "sha256_fonte": "a5c7f1878810b483e33ce2ed60224f498035dcc99c8f9c4acd55e3df733f8d16",
+      "sha256_vendorizado": "a5c7f1878810b483e33ce2ed60224f498035dcc99c8f9c4acd55e3df733f8d16"
+    },
+    {
+      "arquivo": "saidas.py",
+      "sha256_fonte": "a6885d8be3bf5288d810b5bf3891ef28b89e3362a1a78a99287519996621168f",
+      "sha256_vendorizado": "a6885d8be3bf5288d810b5bf3891ef28b89e3362a1a78a99287519996621168f"
+    },
+    {
+      "arquivo": "sazonalidade.py",
+      "sha256_fonte": "c127a14a75159c25131a41ff17565407a5375f760d719e051c05ec7c3b729960",
+      "sha256_vendorizado": "c127a14a75159c25131a41ff17565407a5375f760d719e051c05ec7c3b729960"
+    }
+  ],
+  "aviso": "Nunca edite motor_curva/*.py a mao. Conserto e na fonte, seguido de resync (python scripts/vendor_motor.py --source <projeto_curva_v4>)."
+}

@@ -1,0 +1,48 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Banco local e caches de dados. Nunca versionar dado de mercado.
+data/*.db
+data/*.db-journal
+data/*.sqlite3
+data/cache/*
+!data/cache/.gitkeep
+data/real/*
+!data/real/.gitkeep
+data/snapshots/
+
+# Pasta de trabalho temporaria (prompt de integracoes secao 2.13)
+.tmp/
+
+# Secrets do Streamlit
+.streamlit/secrets.toml
+
+.DS_Store
+
+# --- motor vendorizado (PROMPT_FINAL_COPILOTO.md) ---------------------------
+# motor_curva/config.py (vendorizado) cria estas pastas na raiz do repo ao ser
+# importado (RAIZ = parents[1] do arquivo vendorizado). Efeito colateral aceito
+# como inofensivo; nunca commitar dado bruto nem output regeneravel.
+/data/raw/
+/data/processed/
+/outputs/
+/fixtures/
+
+# Copia de trabalho do motor fora do pacote vendorizado (dado real do case,
+# nao e o app). Nunca editar motor_curva/ a mao — conserto e aqui, com resync.
+/motor_curva_source/
+
+# motor_curva/*.py e motor_curva/VENDOR_MANIFEST.json SAO versionados (copia
+# fiel do motor). motor_curva/snapshots/*.json TAMBEM sao versionados (snapshot
+# pinado + golden). Nada dentro de motor_curva/ e ignorado por padrao aqui.

@@ -1,0 +1,17 @@
+# Energy Trading Copilot — dependencias do APP publicado (Streamlit Cloud).
+# Nunca inclua pdfplumber/matplotlib/python-pptx/python-docx aqui: essas sao
+# so do pipeline pesado offline (requirements-motor-offline.txt), e o container
+# de deploy nao precisa delas para nada que o usuario ve.
+
+streamlit>=1.36          # interface
+pandas>=2.2               # tabelas na UI e caminho barato do motor (book.py/premio.py)
+numpy>=1.24                # caminho barato do motor (book.py/premio.py)
+plotly>=5.22              # graficos
+SQLAlchemy>=2.0            # camada de persistencia (SQLite local / Postgres em producao)
+psycopg[binary]>=3.1        # driver Postgres (Supabase/Neon)
+openpyxl>=3.1              # planilha da Entrega 2
+reportlab>=4.0             # geracao de PDF
+pypdf>=4.0                 # validacao de PDF (contagem de paginas)
+anthropic>=0.30             # modo IA real (opcional: sem chave, roda em DEMO)
+pymupdf>=1.24               # leitura de PDF do acervo (fallback: pypdf)
+pytest>=8.2                # testes

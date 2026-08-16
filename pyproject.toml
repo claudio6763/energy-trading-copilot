@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "energy-trading-copilot"
+version = "0.1.0"
+description = "Mesa virtual de trading de energia - Registrar, Desafiar, Vigiar"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+
+# Sprint 1 = fundacao. Somente o necessario para configuracao, banco e persistencia.
+dependencies = [
+    "SQLAlchemy>=2.0.30",
+    "alembic>=1.13.1",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+]
+
+[project.optional-dependencies]
+# Sprint 1 opcional: alvo de producao (Supabase / PostgreSQL + pgvector).
+postgres = [
+    "psycopg[binary]>=3.1.18",
+    "pgvector>=0.2.5",
+]
+# Declarado agora, instalado nas sprints 3-7. Nao e usado por nenhum modulo do Sprint 1.
+app = [
+    "streamlit>=1.36",
+    "plotly>=5.22",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "anthropic>=0.30",
+]
+dev = [
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+]
+
+[project.scripts]
+copilot-seed-demo = "copilot.seed.demo:main"
+copilot-doctor = "copilot.scripts_entry:doctor"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+copilot = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "src"]
+addopts = "-q --strict-markers"
+markers = [
+    "persistence: exercita banco em disco e reinicializacao de processo",
+    "postgres: requer PostgreSQL disponivel",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

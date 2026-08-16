@@ -1,0 +1,13 @@
+# Energy Trading Copilot — MVP
+# O NUCLEO roda so com a stdlib do Python 3.12 (sqlite3 + FTS5).
+# Estas dependencias sao para a interface, os entregaveis e o modo IA real.
+
+streamlit>=1.36          # interface
+pandas>=2.2              # tabelas na UI
+plotly>=5.22             # graficos
+openpyxl>=3.1            # planilha da Entrega 2
+reportlab>=4.0           # geracao de PDF
+pypdf>=4.0               # validacao de PDF (contagem de paginas)
+anthropic>=0.30          # modo IA real (opcional: sem chave, roda em DEMO)
+pymupdf>=1.24            # leitura de PDF do acervo (fallback: pypdf)
+pytest>=8.2              # testes

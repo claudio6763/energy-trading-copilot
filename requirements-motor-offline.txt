@@ -1,0 +1,17 @@
+# Dependencias SO do pipeline pesado offline do motor
+# (scripts/build_motor_snapshot.py e scripts/vendor_motor.py --source apontando
+# para o motor completo). NUNCA instalar isto no ambiente de deploy: o app
+# publicado nunca le data/raw nem gera snapshot, so le motor_curva/snapshots/*.json
+# ja commitado.
+#
+# Inclui -r requirements-app.txt porque o script offline tambem importa
+# motor_curva.book/premio (pandas/numpy) e monta o snapshot com o mesmo
+# ambiente que roda pytest.
+-r requirements-app.txt
+
+pdfplumber>=0.11   # leitura dos boletins InfoPLD e IPDO
+scipy>=1.11        # motor_curva/risco.py (FHS, quantis)
+matplotlib>=3.7    # graficos do motor (saidas.py)
+python-pptx>=1.0   # apresentacao.py do motor
+python-docx>=1.1   # documentos do motor
+requests>=2.31     # fontes.py (sync CKAN CCEE/ONS)
