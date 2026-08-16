@@ -6,6 +6,7 @@ A aplicacao inicia mesmo sem credenciais externas (modo demonstracao).
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import date
 from decimal import Decimal
@@ -30,6 +31,7 @@ from src.services import motor_service as MS  # noqa: E402
 from src.services import risk_service as RS  # noqa: E402
 from src.services import snapshot_loader as SNAP  # noqa: E402
 from src.services import thesis_service as TS  # noqa: E402
+from src.services import vigiar_service as VIG  # noqa: E402
 from src.services import watchdog_service as WD  # noqa: E402
 
 LIMITE_VAR_BRL = Decimal("50000000.00")  # P8 / CLAUDE.md — o limite do case
@@ -78,11 +80,183 @@ try:
         )
     area = st.sidebar.radio(
         "Área",
-        ["Registrar tese", "Dashboard", "Teses", "Debate", "Monitor", "Dados e fontes"],
+        ["Mesa", "Registrar tese", "Tese", "Dashboard", "Teses", "Debate", "Monitor",
+         "Dados e fontes"],
     )
 
+    def _teses_com_book() -> list[dict]:
+        linhas = conn.execute(
+            "SELECT t.* FROM theses t JOIN thesis_book b ON b.thesis_id = t.id "
+            "ORDER BY t.created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in linhas]
+
+    # ================================================================== MESA
+    if area == "Mesa":
+        st.title("Mesa")
+        teses_motor = _teses_com_book()
+
+        if not teses_motor:
+            st.info("Nenhuma tese registrada. Vá em **Registrar tese** para cadastrar.")
+        else:
+            tese_atual = teses_motor[0]
+            livro_atual = MS.get_thesis_book(conn, tese_atual["id"])
+
+            with st.expander("🔴 Atualizar leitura de mercado e vigiar", expanded=False):
+                st.caption(
+                    "Compara os parâmetros REGISTRADOS na tese contra os parâmetros "
+                    "correntes desta sessão — nunca snapshot contra snapshot."
+                )
+                snap_mesa = SNAP.load_default_snapshot()
+                ref_salva = json.loads(livro_atual["ref_mercado_json"])
+                cols_v = st.columns(len(ref_salva))
+                ref_sessao = {}
+                for col, (mes, valor) in zip(cols_v, sorted(ref_salva.items())):
+                    ref_sessao[mes] = col.number_input(
+                        f"{mes[5:7]}/{mes[2:4]}", value=float(valor), step=1.0,
+                        format="%.2f", key=f"vigiar_{mes}",
+                    )
+                if st.button("Verificar vigilância"):
+                    st.session_state["mesa_alertas"] = VIG.avaliar_gatilhos(
+                        livro_atual, snap_mesa, ref_sessao, limite_var=LIMITE_VAR_BRL
+                    )
+
+            alertas_mesa = st.session_state.get("mesa_alertas", [])
+            st.subheader("Alertas abertos")
+            if alertas_mesa:
+                for a in alertas_mesa:
+                    icone = "🔴" if a["severidade"] == "CRÍTICO" else "🟠"
+                    with st.expander(f"{icone} [{a['severidade']}] {a['gatilho']}", expanded=True):
+                        st.write(a["mensagem"])
+                        st.caption(
+                            f"premissa: {a['premissa']} · de {a['de']} para {a['para']} · "
+                            f"gatilho acionado: {a['gatilho_de_saida_acionado'] or '—'}"
+                        )
+            else:
+                st.info("Nenhum alerta aberto. Nenhum zero silencioso: isto é um estado "
+                        "verificado, não a ausência de verificação.")
+
+            st.subheader(f"BOOK PROPOSTO — {tese_atual['title']}")
+            st.caption(
+                "\"Proposto\", não \"vigente\": o case não dá book posicionado de "
+                "partida."
+            )
+            st.dataframe(
+                [
+                    {
+                        "vértice": p["mes_ref"], "lado": p["lado"],
+                        "MWm": FMT.fmt_mwm(p["mwmed"]) + " " + FMT.nature_badge(p["mwmed_nature"]),
+                        "MWh": FMT.fmt_mwh(p["mwh"]),
+                        "preço entrada": FMT.fmt_rs_mwh(p["preco_entrada"])
+                                         + " " + FMT.nature_badge(p["preco_entrada_nature"]),
+                        "origem": p["preco_entrada_origem"],
+                    }
+                    for p in livro_atual["legs"]
+                ],
+                use_container_width=True, hide_index=True,
+            )
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Energia", FMT.fmt_mwh(livro_atual["energia_mwh"]))
+            m2.metric("Notional", FMT.fmt_money_mi(livro_atual["notional_brl"]))
+            m3.metric("MWm eq.", FMT.fmt_mwm(livro_atual["mwmed_equivalente_flat"]))
+            consumo_mesa = float(livro_atual["consumo_limite"])
+            st.progress(min(consumo_mesa, 1.0),
+                        text=f"VaR {FMT.fmt_money(livro_atual['var_total'])} — "
+                             f"{FMT.fmt_pct(consumo_mesa)} do limite de "
+                             f"{FMT.fmt_money(livro_atual['var_limit'])} "
+                             f"(folga {FMT.fmt_money(float(livro_atual['var_limit']) - float(livro_atual['var_total']))})")
+
+            st.subheader("Teses registradas")
+            st.dataframe(
+                [
+                    {"título": t["title"], "direção": t["direction"], "status": t["status"],
+                     "versão": t["version"], "responsável": t["owner"], "data-base": t["as_of"]}
+                    for t in teses_motor
+                ],
+                use_container_width=True, hide_index=True,
+            )
+
+    # =================================================================== TESE
+    elif area == "Tese":
+        st.title("Tese (detalhe)")
+        teses_motor = _teses_com_book()
+        if not teses_motor:
+            st.info("Nenhuma tese registrada.")
+        else:
+            por_id = {t["id"]: t for t in teses_motor}
+            escolhido = st.selectbox(
+                "Tese", list(por_id.keys()),
+                format_func=lambda tid: f"{por_id[tid]['title']} (v{por_id[tid]['version']}, {por_id[tid]['status']})",
+            )
+            t = por_id[escolhido]
+            livro = MS.get_thesis_book(conn, t["id"])
+
+            st.header(t["title"])
+            st.caption(f"{t['direction']} · {t['status']} · v{t['version']} · {t['owner']} · {t['as_of']}")
+            st.markdown(f"**Tese (até 5 linhas)** {FMT.TRADER_BADGE}")
+            st.write(t["summary"])
+
+            st.markdown(f"**Ladder congelado nesta versão** · snapshot `{livro['snapshot_hash'][:12]}`")
+            st.dataframe(
+                [
+                    {"vértice": p["mes_ref"], "lado": p["lado"],
+                     "MWm": FMT.fmt_mwm(p["mwmed"]), "MWh": FMT.fmt_mwh(p["mwh"]),
+                     "preço entrada": FMT.fmt_rs_mwh(p["preco_entrada"]),
+                     "natureza": FMT.nature_badge(p["preco_entrada_nature"]),
+                     "origem": p["preco_entrada_origem"]}
+                    for p in livro["legs"]
+                ],
+                use_container_width=True, hide_index=True,
+            )
+            dc1, dc2, dc3 = st.columns(3)
+            dc1.metric("Notional", FMT.fmt_money_mi(livro["notional_brl"]))
+            dc2.metric("VaR", FMT.fmt_money_mi(livro["var_total"]))
+            dc3.metric("Consumo do limite", FMT.fmt_pct(float(livro["consumo_limite"])))
+            st.caption(
+                f"Evidência: `{livro['evidence_id']}` · rótulos: "
+                f"{', '.join(f'{k}={v}' for k, v in livro['natures'].items())}"[:400]
+            )
+
+            st.markdown("**Resultado esperado — intervalo, nunca número único**")
+            r1, r2, r3 = st.columns(3)
+            r1.metric("Seco (adverso — vendido)", FMT.fmt_money_mi(livro["pnl_entrega_seco"]))
+            r2.metric("Esperado", FMT.fmt_money_mi(livro["pnl_entrega_esperado"]))
+            r3.metric("Úmido (favorável — vendido)", FMT.fmt_money_mi(livro["pnl_entrega_umido"]))
+            st.caption(
+                "Cenários lado a lado — trajetórias oficiais inteiras da CCEE, nunca "
+                "combinadas mês a mês. Impacto no VaR: o dimensionamento já usa o VaR "
+                "de marcação por vértice; a perda em cenário é stress, não dimensiona."
+            )
+
+            hc1, hc2 = st.columns(2)
+            hc1.metric("Horizonte (dias)", t["horizon_days"] or "—")
+            hc2.metric("Data de reavaliação", t["review_date"] or "—")
+            st.markdown(f"**Gatilho de saída** {FMT.TRADER_BADGE}")
+            st.write(t["exit_condition"] or "—")
+            st.markdown(f"**O que invalidaria a tese** {FMT.TRADER_BADGE}")
+            st.write(t["invalidation"] or "—")
+
+            st.subheader("Desafiar — registrado")
+            if t["desafio_premissa_fragil"]:
+                st.markdown(f"**Premissa mais frágil** {FMT.nature_badge('CALCULADO')}")
+                st.write(t["desafio_premissa_fragil"])
+                st.markdown(f"**Cenário que quebra** {FMT.nature_badge('CALCULADO')}")
+                st.write(t["desafio_cenario_quebra"])
+                st.markdown(f"**Contra-argumento** {FMT.IA_BADGE}")
+                st.write(t["desafio_contra_argumento"])
+                st.markdown(f"**Resposta do trader** {FMT.TRADER_BADGE}")
+                st.write(t["trader_response"] or "—")
+            else:
+                st.warning("Esta tese não passou pelo Desafiar (registrada antes da fatia 6).")
+
+            st.subheader("Histórico de alertas (vigilância, sessão atual)")
+            st.caption(
+                "Vá em **Mesa** para injetar um dado novo e ver o que dispara contra "
+                "esta tese em tempo real."
+            )
+
     # ========================================================= REGISTRAR TESE
-    if area == "Registrar tese":
+    elif area == "Registrar tese":
         st.title("Registrar tese")
         st.caption(
             "O trader escolhe a referência de mercado; o motor devolve o book "

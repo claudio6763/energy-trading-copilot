@@ -42,6 +42,7 @@ def test_salvar_fica_bloqueado_sem_desafiar(app_env):
     """Etapa 3 e bloqueante: sem rodar Desafiar, 'Salvar tese' fica desabilitado."""
     at = AppTest.from_file(APP_PATH, default_timeout=60)
     at.run()
+    at.sidebar.radio[0].set_value("Registrar tese").run()
     [b for b in at.button if b.label == "Gerar book"][0].click().run()
     assert not at.exception
 
@@ -57,7 +58,8 @@ def test_registrar_tese_gera_book_do_motor(app_env):
     at = AppTest.from_file(APP_PATH, default_timeout=60)
     at.run()
     assert not at.exception
-    assert at.sidebar.radio[0].value == "Registrar tese"  # e o default agora
+    at.sidebar.radio[0].set_value("Registrar tese").run()
+    assert not at.exception
 
     botoes = [b for b in at.button if b.label == "Gerar book"]
     assert botoes, "botao 'Gerar book' nao encontrado na Etapa 1"
@@ -84,6 +86,7 @@ def test_registrar_tese_salva_e_persiste_apos_reconexao(app_env, tmp_path):
 
     at = AppTest.from_file(APP_PATH, default_timeout=60)
     at.run()
+    at.sidebar.radio[0].set_value("Registrar tese").run()
     [b for b in at.button if b.label == "Gerar book"][0].click().run()
     assert not at.exception
     _rodar_desafiar_e_responder(at)
@@ -114,6 +117,7 @@ def test_registro_ao_vivo_mostra_diff_e_marca_origem_do_vertice_alterado(app_env
 
     at = AppTest.from_file(APP_PATH, default_timeout=60)
     at.run()
+    at.sidebar.radio[0].set_value("Registrar tese").run()
 
     gerar = [b for b in at.button if b.label == "Gerar book"][0]
     gerar.click().run()
