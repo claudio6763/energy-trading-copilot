@@ -226,4 +226,99 @@ Nenhuma das três exceções que exigiam parar e perguntar (mudar arquivo do
 motor, segundo cálculo de risco concorrente, algo combinado impossível)
 ocorreu — segui até aqui sem interromper, como pedido.
 
+## Pós-deploy: GroupingError em produção e poluição do Neon por teste
+
+**Sintoma relatado pelo usuário:** `psycopg.errors.GroupingError` em
+`source_freshness` (`repositories.py:272`), quebrando Dashboard e Dados e
+fontes. Causa: `SELECT metric, MAX(ref_date), ..., classification FROM
+market_observations GROUP BY metric` — coluna `classification` solta ao lado
+de agregados, sem estar no `GROUP BY`. SQLite tolera (devolve linha
+arbitrária do grupo); Postgres recusa. Mesma família dos 4 ajustes de DDL já
+feitos contra o Neon, agora em query.
+
+**Correção:** reescrito com window functions (`ROW_NUMBER() OVER (PARTITION
+BY metric ORDER BY ref_date DESC, as_of DESC)`), que roda idêntico nos dois
+dialetos — sem `if dialect == ...`. `classification` passa a ser,
+explicitamente, a da observação mais recente do metric (antes era uma
+escolha arbitrária do SQLite).
+
+**Varredura pedida ("não corrija só a que apareceu")** achou que
+`source_freshness` não era o único ponto sem cobertura real contra
+Postgres — a aba inteira "Dados e fontes" nunca tinha sido exercitada:
+
+- `INSERT OR REPLACE` (sintaxe SQLite, sem equivalente em Postgres) em 4
+  pontos: `insert_observation`, `insert_curve`, `insert_curve_point`
+  (`repositories.py`) e o `scenario_results` de `risk_service.py`. Todos os
+  botões de escrita da aba (importar observação manual, "Atualizar agora",
+  importar curva licenciada, refresh da curva estatística) quebravam com
+  `psycopg.errors.SyntaxError` contra Postgres. Corrigido com
+  `repositories.upsert_row()` — um helper único que emite `INSERT OR
+  REPLACE` no SQLite e `INSERT ... ON CONFLICT (...) DO UPDATE` no Postgres,
+  reaproveitado nos 4 pontos.
+- RAG (FTS5): `chunk_fts` não existe em Postgres (documentado no
+  `schema_sqlite_only.sql`, mas o código não se protegia disso). `search()`
+  só capturava `sqlite3.OperationalError` — contra Postgres o erro de
+  "relation does not exist" subia cru e derrubava o botão "Buscar" na
+  tela. `add_document()` tentava gravar em `chunk_fts` sem checar o
+  dialeto. Ambos agora checam o dialeto primeiro: `search()` devolve lista
+  vazia (degrada, não quebra a tela — RAG continua SQLite-only por design,
+  ver README); `add_document()` recusa com mensagem clara em vez de deixar
+  o erro de tabela inexistente subir.
+- `source_freshness` também é chamado por `watchdog_service.run_once()` —
+  ou seja, o mesmo `GroupingError` também derrubava "Executar Watchdog
+  agora" (tela Monitor), um terceiro call site além dos dois relatados.
+- Não achei `GROUP BY` com o mesmo padrão em nenhum outro lugar do projeto
+  (grep em `src/` inteiro — um único ponto), nem `PRAGMA`/`strftime`/
+  `GROUP_CONCAT`/`AUTOINCREMENT`/aspas duplas como literal — os outros usos
+  de `PRAGMA` já eram condicionais a `dialect == "sqlite"` (`connection.py`,
+  `pg_shim.py`) e a coluna reservada `"window"` já tinha tratamento
+  dialeto-consciente em `thesis_service.new_version`. Booleans do schema são
+  `INTEGER` (0/1) nas duas tabelas onde aparecem, não `BOOLEAN` — sem risco
+  de coerção.
+
+**Teste novo:** `tests/services/test_screen_queries_postgres.py`, marcador
+`postgres`. Carrega `app.py` de verdade via `AppTest` contra o Postgres real
+e visita as 9 áreas do menu (a mesma tela que a defesa vai clicar), clica
+"Executar Watchdog agora" e "Buscar" (RAG), e testa isoladamente os 4
+`upsert_row()` (grava a mesma chave natural duas vezes, confirma que
+atualiza em vez de lançar erro de sintaxe) e o `source_freshness` reescrito.
+Todo dado que escreve é tageado e apagado no `finally`.
+
+**Incidente causado ao validar isso — poluição do Neon de produção.** Para
+confirmar o bug e testar a correção, rodei a suíte local. O `.env` deste
+projeto tem `COPILOT_DB` apontando para o Neon de produção (configurado na
+sessão anterior para o deploy). Descoberta: `connect(path=...)`/
+`init_db(path=...)` **ignoravam o `path` explícito sempre que havia uma URL
+Postgres no ambiente** — ou seja, testes escritos para SQLite isolado
+(`init_db(path=":memory:")` em `test_db_concurrency.py`,
+`test_curve_service_and_bridge.py` etc.) conectavam no Neon de produção por
+baixo dos panos, sem aviso. Rodei a suíte completa duas vezes antes de
+perceber — o Neon acumulou 40 teses falsas (`owner='pytest'`), observações,
+curvas, fontes, snapshots de ingestão, execuções de watchdog, alertas e
+~60 linhas de `audit_log` de teste (algumas com `actor='trader'`, que é só o
+default do parâmetro no teste, não um trader de verdade — mas é enganoso
+numa trilha de auditoria).
+
+**Trava (causa raiz, não só o sintoma):**
+
+1. `connection.py::connect()` — `path` explícito agora **sempre** força
+   SQLite, mesmo com `DATABASE_URL`/`COPILOT_DB` de Postgres no ambiente. Só
+   na ausência de `path` é que o backend vem do ambiente. Isso sozinho já
+   fecha o buraco que causou o incidente.
+2. `conftest.py` — fixture `autouse` que remove `DATABASE_URL`/`COPILOT_DB`
+   do ambiente ANTES do corpo de qualquer teste sem o marcador `postgres`
+   rodar (checa se a URL é Postgres não-local; se for, `monkeypatch.delenv`).
+   Defesa em profundidade: mesmo que um teste futuro esqueça de isolar o
+   banco, ele nunca vai enxergar uma URL de produção.
+
+**Limpeza:** com as duas travas no lugar, apaguei TODAS as linhas de TODAS
+as tabelas do Neon (`TRUNCATE ... CASCADE`) e rodei
+`scripts/seed_producao.py` de novo contra o banco limpo. Verificado depois:
+exatamente 1 tese (`owner='trader'`), 5 pernas, VaR R$ 29.892.814,54,
+consumo 59,79% do limite, 3 linhas de `audit_log` (LLM_CALL do desafio,
+CREATE da tese, QUANT_RUN do book) — zero rastro de teste. Autorizado
+explicitamente pelo usuário antes de rodar (ação destrutiva contra produção
+— o classificador de permissão do agente bloqueou a primeira tentativa,
+corretamente, até a autorização explícita chegar).
+
 *(Continua conforme as fatias seguintes forem fechadas.)*

@@ -76,6 +76,11 @@ def add_document(
     file_hash: str | None = None,
 ) -> str:
     """Ingere o documento pagina a pagina e indexa no FTS5."""
+    if not isinstance(conn, sqlite3.Connection):
+        raise RuntimeError(
+            "RAG (FTS5) e SQLite-only — sem indice equivalente em Postgres nesta versao "
+            "(ver README, secao Limitacoes declaradas)."
+        )
     if not pages:
         raise ValueError("Documento sem paginas legiveis. PDF pode ser imagem sem OCR.")
     did = R.new_id()
@@ -152,7 +157,13 @@ def search(
 
     Filtro de vigencia: `effective_from <= as_of` e (`effective_to` nulo ou
     `>= as_of`). Regra revogada nao volta como se valesse.
+
+    Backend Postgres: sem `chunk_fts` (FTS5 e SQLite-only, ver `add_document`)
+    — devolve lista vazia em vez de deixar o erro de tabela inexistente
+    subir ate a tela (RAG fica indisponivel, nao quebra a aba).
     """
+    if not isinstance(conn, sqlite3.Connection):
+        return []
     consulta = _fts_query(pergunta)
     if not consulta:
         return []

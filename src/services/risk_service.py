@@ -290,15 +290,16 @@ def compute_scenarios(
                      f"VaR R$ {resultado.var_brl}. {resultado.description}"),
             value=resultado.pnl_brl, unit="R$", as_of=as_of, classification="projetado",
         )
-        conn.execute(
-            "INSERT OR REPLACE INTO scenario_results (id, thesis_id, scenario, is_stress, "
-            "probability, shocked_price, pnl, var_impact, thesis_delta, as_of, evidence_id, "
-            "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (R.new_id(), thesis_id, resultado.scenario.value, 1 if resultado.is_stress else 0,
-             str(resultado.probability),
-             str(list(resultado.shocked_prices.values())[0]) if resultado.shocked_prices else None,
-             str(resultado.pnl_brl), str(resultado.var_delta_brl), resultado.thesis_delta,
-             as_of, eid, R.now_iso()),
+        R.upsert_row(
+            conn, table="scenario_results",
+            columns=("id", "thesis_id", "scenario", "is_stress", "probability", "shocked_price",
+                     "pnl", "var_impact", "thesis_delta", "as_of", "evidence_id", "created_at"),
+            values=(R.new_id(), thesis_id, resultado.scenario.value, 1 if resultado.is_stress else 0,
+                    str(resultado.probability),
+                    str(list(resultado.shocked_prices.values())[0]) if resultado.shocked_prices else None,
+                    str(resultado.pnl_brl), str(resultado.var_delta_brl), resultado.thesis_delta,
+                    as_of, eid, R.now_iso()),
+            conflict_cols=("thesis_id", "scenario", "as_of"),
         )
         saida.append({
             "scenario": resultado.scenario.value, "is_stress": resultado.is_stress,

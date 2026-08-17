@@ -52,6 +52,30 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def upsert_row(
+    conn: Any, *, table: str, columns: Sequence[str], values: Sequence[Any],
+    conflict_cols: Sequence[str],
+) -> None:
+    """Grava substituindo por chave unica. `INSERT OR REPLACE` (SQLite) nao
+    existe no Postgres — la vira `INSERT ... ON CONFLICT (...) DO UPDATE`,
+    igual em efeito (linha da chave unica e sobrescrita, resto intocado)."""
+    placeholders = ",".join("?" * len(columns))
+    cols_sql = ",".join(columns)
+    if isinstance(conn, sqlite3.Connection):
+        conn.execute(
+            f"INSERT OR REPLACE INTO {table} ({cols_sql}) VALUES ({placeholders})",
+            values,
+        )
+        return
+    update_cols = [c for c in columns if c not in conflict_cols]
+    set_sql = ",".join(f"{c}=EXCLUDED.{c}" for c in update_cols)
+    conn.execute(
+        f"INSERT INTO {table} ({cols_sql}) VALUES ({placeholders}) "
+        f"ON CONFLICT ({','.join(conflict_cols)}) DO UPDATE SET {set_sql}",
+        values,
+    )
+
+
 # ===========================================================================
 # Auditoria
 # ===========================================================================
@@ -221,12 +245,14 @@ def insert_observation(
         as_of=as_of, classification=classification,
     )
     oid = new_id()
-    conn.execute(
-        "INSERT OR REPLACE INTO market_observations (id, metric, value, unit, submarket, "
-        "period_start, period_end, ref_date, as_of, source_id, classification, model_run, "
-        "ingested_at, evidence_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (oid, metric, as_text(value), unit, submarket, period_start, period_end, ref_date,
-         as_of, source_id, classification, model_run or "", now_iso(), eid, now_iso()),
+    upsert_row(
+        conn, table="market_observations",
+        columns=("id", "metric", "value", "unit", "submarket", "period_start", "period_end",
+                 "ref_date", "as_of", "source_id", "classification", "model_run",
+                 "ingested_at", "evidence_id", "created_at"),
+        values=(oid, metric, as_text(value), unit, submarket, period_start, period_end, ref_date,
+                as_of, source_id, classification, model_run or "", now_iso(), eid, now_iso()),
+        conflict_cols=("metric", "ref_date", "as_of", "model_run"),
     )
     return oid, eid
 
@@ -268,11 +294,26 @@ def distinct_metrics(conn: sqlite3.Connection) -> list[str]:
 
 
 def source_freshness(conn: sqlite3.Connection, *, as_of: str) -> list[dict[str, Any]]:
-    """Idade de cada metrica em dias. Fonte atrasada aparece; nunca some."""
+    """Idade de cada metrica em dias. Fonte atrasada aparece; nunca some.
+
+    `classification` acompanha a observacao mais recente (maior `ref_date`,
+    desempate por `as_of`) — nao e um agregado, entao nao pode ir solto ao
+    lado de `MAX()`/`COUNT()` num `GROUP BY metric` (SQLite tolera coluna nao
+    agregada fora do GROUP BY e devolve uma linha arbitraria; Postgres recusa
+    com `GroupingError`). Window function resolve nos dois dialetos: agrega
+    por `metric` e escolhe a linha mais recente do grupo via `ROW_NUMBER`.
+    """
     rows = conn.execute(
-        "SELECT metric, MAX(ref_date) AS last_ref, MAX(as_of) AS last_asof, "
-        "COUNT(*) AS n, classification FROM market_observations "
-        "WHERE as_of <= ? GROUP BY metric ORDER BY metric",
+        "SELECT metric, last_ref, last_asof, n, classification FROM ("
+        "  SELECT metric, ref_date, as_of, classification,"
+        "         COUNT(*) OVER (PARTITION BY metric) AS n,"
+        "         MAX(ref_date) OVER (PARTITION BY metric) AS last_ref,"
+        "         MAX(as_of) OVER (PARTITION BY metric) AS last_asof,"
+        "         ROW_NUMBER() OVER ("
+        "             PARTITION BY metric ORDER BY ref_date DESC, as_of DESC"
+        "         ) AS rn"
+        "  FROM market_observations WHERE as_of <= ?"
+        ") t WHERE rn = 1 ORDER BY metric",
         (as_of,),
     ).fetchall()
     referencia = date.fromisoformat(as_of)
@@ -319,12 +360,14 @@ def insert_curve(
         as_of=as_of, classification=classification,
     )
     cid = new_id()
-    conn.execute(
-        "INSERT OR REPLACE INTO forward_curves (id, curve_name, submarket, energy_source, "
-        "quote_type, origin, proxy_of, as_of, source_id, classification, evidence_id, notes, "
-        "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (cid, curve_name, submarket, energy_source, quote_type, origin, proxy_of, as_of,
-         source_id, classification, eid, notes, now_iso()),
+    upsert_row(
+        conn, table="forward_curves",
+        columns=("id", "curve_name", "submarket", "energy_source", "quote_type", "origin",
+                 "proxy_of", "as_of", "source_id", "classification", "evidence_id", "notes",
+                 "created_at"),
+        values=(cid, curve_name, submarket, energy_source, quote_type, origin, proxy_of, as_of,
+                source_id, classification, eid, notes, now_iso()),
+        conflict_cols=("curve_name", "submarket", "energy_source", "quote_type", "as_of"),
     )
     return cid, eid
 
@@ -342,10 +385,13 @@ def insert_curve_point(
         value=price, unit=unit, as_of=as_of, classification=classification,
     )
     pid = new_id()
-    conn.execute(
-        "INSERT OR REPLACE INTO forward_curve_points (id, curve_id, tenor, delivery_start, "
-        "delivery_end, price, unit, evidence_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-        (pid, curve_id, tenor, delivery_start, delivery_end, as_text(price), unit, eid, now_iso()),
+    upsert_row(
+        conn, table="forward_curve_points",
+        columns=("id", "curve_id", "tenor", "delivery_start", "delivery_end", "price", "unit",
+                 "evidence_id", "created_at"),
+        values=(pid, curve_id, tenor, delivery_start, delivery_end, as_text(price), unit, eid,
+                now_iso()),
+        conflict_cols=("curve_id", "tenor"),
     )
     return pid, eid
 
@@ -395,5 +441,6 @@ __all__ = [
     "compare_curves", "content_hash", "create_evidence", "curve_points", "distinct_metrics",
     "get_evidence", "insert_curve", "insert_curve_point", "insert_observation",
     "latest_curve", "latest_observation", "list_sources", "mark_source_success",
-    "metric_history", "new_id", "now_iso", "source_freshness", "to_decimal", "upsert_source",
+    "metric_history", "new_id", "now_iso", "source_freshness", "to_decimal", "upsert_row",
+    "upsert_source",
 ]

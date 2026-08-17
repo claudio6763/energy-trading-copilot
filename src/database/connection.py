@@ -107,7 +107,18 @@ def _connect_sqlite(path: str | Path | None = None) -> sqlite3.Connection:
 
 
 def connect(path: str | Path | None = None) -> AnyConnection:
-    """Abre a conexao do backend ativo. `path` so tem efeito no modo sqlite."""
+    """Abre a conexao do backend ativo.
+
+    `path` explicito e um pedido de SQLite isolado (testes com `:memory:` ou
+    arquivo em `tmp_path`) — vale sempre, mesmo com `DATABASE_URL`/`COPILOT_DB`
+    de Postgres no ambiente. Sem isso, `init_db(path=":memory:")` chamado por
+    um teste ficava mudo e conectava no Postgres de producao por baixo dos
+    panos sempre que o `.env` do deploy estivesse carregado — foi exatamente
+    o que poluiu o Neon com dado de teste numa sessao de validacao (ver
+    DECISOES.md). So na ausencia de `path` e que o backend vem do ambiente.
+    """
+    if path is not None:
+        return _connect_sqlite(path)
     url = get_database_url()
     if url and _is_postgres_url(url):
         return connect_postgres(url)
